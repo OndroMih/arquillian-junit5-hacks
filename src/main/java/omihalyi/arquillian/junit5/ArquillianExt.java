@@ -1,8 +1,9 @@
 package omihalyi.arquillian.junit5;
 
-import java.lang.reflect.Method;
+import java.lang.reflect.*;
 import java.util.Optional;
 import org.jboss.arquillian.test.spi.*;
+import org.jboss.arquillian.test.spi.execution.SkippedTestExecutionException;
 import org.junit.jupiter.api.extension.*;
 
 public class ArquillianExt implements BeforeAllCallback, AfterAllCallback, BeforeEachCallback, AfterEachCallback {
@@ -28,7 +29,7 @@ public class ArquillianExt implements BeforeAllCallback, AfterAllCallback, Befor
             adaptor.afterSuite();
             adaptor.shutdown();
         }
-    }    
+    }
 
     @Override
     public void beforeEach(TestExtensionContext context) throws Exception {
@@ -52,7 +53,7 @@ public class ArquillianExt implements BeforeAllCallback, AfterAllCallback, Befor
             final TestRunnerAdaptor adaptor = getTestRunnerAdaptor(context);
             final Optional<Method> testMethod = context.getTestMethod();
             final Object testInstance = context.getTestInstance();
-            adaptor.test(new TestMethodExecutor() {
+            TestResult result = adaptor.test(new TestMethodExecutor() {
                 @Override
                 public void invoke(Object... parameters) throws Throwable {
                     try {
@@ -60,8 +61,9 @@ public class ArquillianExt implements BeforeAllCallback, AfterAllCallback, Befor
                             Method method = testMethod.get();
                             method.invoke(testInstance, parameters);
                         }
+                    } catch (InvocationTargetException e) {
+                        throw e.getCause();
                     } catch (Throwable e) {
-                        // Force a way to return the thrown Exception from the Container to the client.
                         throw e;
                     }
                 }
@@ -74,6 +76,19 @@ public class ArquillianExt implements BeforeAllCallback, AfterAllCallback, Befor
                     return testInstance;
                 }
             });
+            Throwable throwable = result.getThrowable();
+            if (throwable != null) {
+                if (result.getStatus() == TestResult.Status.SKIPPED) {
+                    if (throwable instanceof SkippedTestExecutionException) {
+                        result.setThrowable(new RuntimeException("Skipped: " + throwable.getMessage(), throwable));
+                    }
+                }
+                if (result.getThrowable() instanceof Exception) {
+                    throw Exception.class.cast(result.getThrowable());
+                } else {
+                    throw new RuntimeException(result.getThrowable());
+                }
+            }
         }
     }
 
@@ -94,5 +109,5 @@ public class ArquillianExt implements BeforeAllCallback, AfterAllCallback, Befor
     private boolean isTestRunnerAdaptorPresent(ExtensionContext context) {
         return getStore(context).testRunnerAdaptor.isPresent();
     }
-    
+
 }

@@ -30,6 +30,5 @@ public class BasicJunit5ArquillianTest {
     @Test
     public void hello() {
         assertNotNull(session, "should run in container");
-        fail("TODO");
     }
 }
